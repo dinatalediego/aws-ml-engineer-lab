@@ -41,7 +41,7 @@ class H0Status:
 
 
 def _numeric(series: pd.Series) -> pd.Series:
-    return pd.to_numeric(series, errors="coerce").fillna(0.0)
+    return pd.to_numeric(series, errors="coerce").fillna(0.0).astype(float)
 
 
 def _truthy(value: object) -> bool:
@@ -72,10 +72,16 @@ def calculate_skill_mastery(skills: pd.DataFrame) -> pd.DataFrame:
     for column in MASTERY_WEIGHTS:
         if column not in df.columns:
             df[column] = 0.0
-        df[column] = _numeric(df[column]).clip(0, 100)
+        df[column] = _numeric(df[column]).clip(0.0, 100.0)
 
-    df["mastery_calc"] = sum(df[col] * weight for col, weight in MASTERY_WEIGHTS.items())
-    df["mastery"] = df["mastery_calc"].round(1)
+    # Keep the calculation explicit and float-stable across pandas versions.
+    df["mastery_calc"] = (
+        df["recall"] * MASTERY_WEIGHTS["recall"]
+        + df["application"] * MASTERY_WEIGHTS["application"]
+        + df["discrimination"] * MASTERY_WEIGHTS["discrimination"]
+        + df["retention"] * MASTERY_WEIGHTS["retention"]
+    )
+    df["mastery"] = df["mastery_calc"].astype(float).round(1)
     return df
 
 
