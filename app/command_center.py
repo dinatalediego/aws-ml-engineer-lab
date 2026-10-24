@@ -14,6 +14,7 @@ from core import (
     has_learning_evidence,
     high_confidence_errors,
     next_best_action,
+    open_errors,
     practitioner_baseline,
     read_csv_or_empty,
     retention_due,
@@ -26,16 +27,21 @@ SKILLS_PATH = ROOT / "SKILL_MATRIX.csv"
 ERRORS_PATH = ROOT / "ERROR_LEDGER.csv"
 H0_RESULTS_PATH = ROOT / "h0" / "H0_RESULTS.csv"
 H0_RESPONSES_PATH = ROOT / "h0" / "H0_PRACTITIONER_RESPONSES.csv"
+H0_GAPS_PATH = ROOT / "h0" / "H0_GAPS.csv"
+H0_PLAN_PATH = ROOT / "h0" / "H0_7_DAY_PLAN.csv"
 
 st.set_page_config(page_title="MLA-C02 Command Center", page_icon="🧠", layout="wide")
 
 
-def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    skills = read_csv_or_empty(SKILLS_PATH)
-    errors = read_csv_or_empty(ERRORS_PATH)
-    h0_results = read_csv_or_empty(H0_RESULTS_PATH)
-    h0_responses = read_csv_or_empty(H0_RESPONSES_PATH)
-    return skills, errors, h0_results, h0_responses
+def load_data() -> tuple[pd.DataFrame, ...]:
+    return (
+        read_csv_or_empty(SKILLS_PATH),
+        read_csv_or_empty(ERRORS_PATH),
+        read_csv_or_empty(H0_RESULTS_PATH),
+        read_csv_or_empty(H0_RESPONSES_PATH),
+        read_csv_or_empty(H0_GAPS_PATH),
+        read_csv_or_empty(H0_PLAN_PATH),
+    )
 
 
 def save_csv(df: pd.DataFrame, path: Path) -> None:
@@ -47,8 +53,14 @@ def fmt_pct(value: float | None) -> str:
     return "—" if value is None else f"{value:.1f}%"
 
 
-skills, errors, h0_results, h0_responses = load_data()
-h0 = evaluate_h0(h0_results)
+def h0_progress_fraction(missing_count: int) -> float:
+    # This is UI progress only, never a certification metric.
+    estimated_gate_items = 16
+    return max(0.0, min(1.0, (estimated_gate_items - missing_count) / estimated_gate_items))
+
+
+skills, errors, h0_results, h0_responses, h0_gaps, h0_plan = load_data()
+h0 = evaluate_h0(h0_results, h0_responses, h0_gaps, h0_plan)
 measured = has_learning_evidence(skills, h0_results)
 readiness = certification_readiness(skills) if measured else None
 domains = domain_readiness(skills)
@@ -56,7 +68,7 @@ high_conf = high_confidence_errors(errors)
 due = retention_due(skills)
 gaps = critical_gaps(skills, errors)
 priority = skill_priority_table(skills, errors)
-action = next_best_action(skills, errors, h0_results)
+action = next_best_action(skills, errors, h0_results, h0_responses, h0_gaps, h0_plan)
 
 st.title("AWS MLA-C02 Command Center v0.1")
 st.caption("Evidence-driven study control: diagnose → prioritize → practice → revalidate.")
@@ -95,8 +107,7 @@ with overview_tab:
     st.dataframe(domain_display, use_container_width=True, hide_index=True)
 
     if measured:
-        chart = domains.set_index("domain")[["readiness"]]
-        st.bar_chart(chart)
+        st.bar_chart(domains.set_index("domain")[["readiness"]])
 
     st.subheader("Highest-leverage capabilities")
     cols = [
@@ -153,15 +164,15 @@ with retention_tab:
 
 with errors_tab:
     meaningful_errors = clean_error_ledger(errors)
+    active_errors = open_errors(errors)
     st.subheader("Error Intelligence")
     e1, e2, e3 = st.columns(3)
     e1.metric("Recorded errors", len(meaningful_errors))
     e2.metric("Open high-confidence", len(high_conf))
-    closed_count = max(len(meaningful_errors) - len(meaningful_errors[meaningful_errors.get("status", "OPEN").fillna("OPEN").astype(str).str.upper().isin(["OPEN", "REOPEN", "PENDING"])]), 0) if not meaningful_errors.empty else 0
-    e3.metric("Closed / resolved", closed_count)
+    e3.metric("Closed / resolved", max(len(meaningful_errors) - len(active_errors), 0))
 
     if not high_conf.empty:
-        st.error("High-confidence errors are priority misconceptions. They should be repaired before broadening study.")
+        st.error("High-confidence errors are priority misconceptions. Repair them before broadening study.")
         st.dataframe(
             high_conf[[c for c in ["error_id", "domain", "skill_id", "question_or_scenario", "confidence_1_5", "mental_model_after", "status"] if c in high_conf.columns]],
             use_container_width=True,
@@ -176,15 +187,16 @@ with errors_tab:
 with h0_tab:
     st.subheader("H0 — Baseline Without Protection")
     st.write("H0 is complete only when real diagnostic evidence exists. This application will not synthesize a score.")
+    st.progress(1.0 if h0.passed else h0_progress_fraction(len(h0.missing)))
 
     if h0.passed:
         st.success(f"H0 PASSED · quantitative baseline {fmt_pct(h0.overall_pct)}")
     else:
-        st.warning("H0 is still pending.")
+        st.warning("H0 is still pending. Complete the evidence below closed-book where required.")
         for item in h0.missing:
             st.write(f"- {item}")
 
-    st.markdown("### Quantitative baseline")
+    st.markdown("### 1 · Quantitative baseline")
     if h0_results.empty:
         st.error("Missing h0/H0_RESULTS.csv")
     else:
@@ -193,7 +205,7 @@ with h0_tab:
             save_csv(edited_results, H0_RESULTS_PATH)
             st.success("Saved. Reload the page to recompute gates.")
 
-    st.markdown("### Practitioner cold questions")
+    st.markdown("### 2 · Practitioner cold questions")
     baseline = practitioner_baseline(h0_responses)
     if not baseline.empty:
         st.dataframe(baseline, use_container_width=True, hide_index=True)
@@ -203,11 +215,25 @@ with h0_tab:
         edited_responses = st.data_editor(h0_responses, use_container_width=True, num_rows="fixed", key="h0_response_editor")
         if st.button("Save practitioner responses"):
             save_csv(edited_responses, H0_RESPONSES_PATH)
-            st.success("Saved. Use evaluator_score_0_5 when a response has been reviewed.")
+            st.success("Saved. Self-score before external review; evaluator score can replace it later.")
+
+    st.markdown("### 3 · Top five gaps")
+    edited_gaps = st.data_editor(h0_gaps, use_container_width=True, num_rows="fixed", key="h0_gaps_editor")
+    if st.button("Save H0 top gaps"):
+        save_csv(edited_gaps, H0_GAPS_PATH)
+        st.success("Top gaps saved.")
+
+    st.markdown("### 4 · Seven-day remediation plan")
+    edited_plan = st.data_editor(h0_plan, use_container_width=True, num_rows="fixed", key="h0_plan_editor")
+    if st.button("Save H0 seven-day plan"):
+        save_csv(edited_plan, H0_PLAN_PATH)
+        st.success("Remediation plan saved.")
+
+    st.caption("Parts C–E (discrimination, blank-page architecture, failure diagnosis) remain defined in DIAGNOSTIC_H0.md and H0_RUNBOOK.md.")
 
 with data_tab:
     st.subheader("Local evidence editor")
-    st.caption("Edits write to your local checkout. Commit them only after reviewing the diff.")
+    st.caption("Edits write to your local checkout. Review `git diff` before committing them.")
 
     st.markdown("### Skill Matrix")
     skills_editor = st.data_editor(skills, use_container_width=True, num_rows="fixed", key="skills_editor")
