@@ -1,0 +1,2 @@
+error_id,date,source,question_or_scenario,domain,skill_id,error_code,confidence_1_5,selected_answer,correct_answer,dominant_requirement,why_my_reasoning_failed,why_correct_answer_wins,why_distractors_lose,mental_model_before,mental_model_after,remediation_action,evidence_link,retest_d1,retest_d3,retest_d7,retest_d14,status,severity
+E0001,,,,,,,,,,,,,,,,,,,,,,,OPEN,
