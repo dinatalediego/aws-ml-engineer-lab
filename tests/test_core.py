@@ -69,9 +69,56 @@ def complete_h0() -> pd.DataFrame:
     )
 
 
+def complete_responses() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "question_id": f"Q{i:02d}",
+                "category": "Data",
+                "question": "Scenario question",
+                "response": "Decision rule with trade-off",
+                "self_score_0_5": 4,
+                "evaluator_score_0_5": None,
+            }
+            for i in range(1, 21)
+        ]
+    )
+
+
+def complete_gaps() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "rank": i,
+                "skill_id_or_topic": f"D4-0{i}",
+                "domain": "D4",
+                "gap_description": "Specific gap",
+                "evidence": "Wrong diagnostic answer",
+                "remediation": "Targeted decision card and retest",
+            }
+            for i in range(1, 6)
+        ]
+    )
+
+
+def complete_plan() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "day": i,
+                "focus_skill_id_or_topic": "D4-04",
+                "objective": "Improve discrimination",
+                "exercise": "Scenario drill",
+                "evidence_expected": "Decision card + retest",
+                "status": "PLANNED",
+            }
+            for i in range(1, 8)
+        ]
+    )
+
+
 def test_mastery_formula():
     result = calculate_skill_mastery(sample_skills())
-    # 0.2*80 + 0.3*60 + 0.3*40 + 0.2*100 = 66
     assert result.loc[0, "mastery"] == 66.0
 
 
@@ -109,6 +156,24 @@ def test_h0_requires_real_evidence():
     assert evaluate_h0(complete_h0()).passed is True
 
 
+def test_h0_structured_evidence_is_fail_closed():
+    result = evaluate_h0(
+        complete_h0(),
+        responses=complete_responses().iloc[:10],
+        gaps=complete_gaps().iloc[:2],
+        plan=complete_plan().iloc[:3],
+    )
+    assert result.passed is False
+    assert any("practitioner responses" in item for item in result.missing)
+    assert any("five structured H0 gaps" in item for item in result.missing)
+    assert any("seven-day remediation plan" in item for item in result.missing)
+
+
+def test_h0_passes_with_full_structured_evidence():
+    result = evaluate_h0(complete_h0(), complete_responses(), complete_gaps(), complete_plan())
+    assert result.passed is True
+
+
 def test_next_action_refuses_to_optimize_before_h0():
     empty_h0 = pd.DataFrame([{"total_questions": ""}])
     action = next_best_action(sample_skills(), pd.DataFrame(), empty_h0)
@@ -116,6 +181,13 @@ def test_next_action_refuses_to_optimize_before_h0():
 
 
 def test_next_action_uses_priority_after_h0():
-    action = next_best_action(sample_skills(), pd.DataFrame(), complete_h0())
+    action = next_best_action(
+        sample_skills(),
+        pd.DataFrame(),
+        complete_h0(),
+        complete_responses(),
+        complete_gaps(),
+        complete_plan(),
+    )
     assert action["type"] == "SKILL"
     assert action["skill_id"] in {"D1-01", "D2-01"}
