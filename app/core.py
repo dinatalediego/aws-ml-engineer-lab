@@ -52,6 +52,12 @@ def _truthy(value: object) -> bool:
     return str(value).strip().lower() in {"true", "1", "yes", "y", "si", "sí", "pass", "passed"}
 
 
+def _nonblank(value: object) -> bool:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return False
+    return bool(str(value).strip())
+
+
 def read_csv_or_empty(path: Path, columns: Iterable[str] | None = None) -> pd.DataFrame:
     if not path.exists() or path.stat().st_size == 0:
         return pd.DataFrame(columns=list(columns or []))
@@ -69,7 +75,6 @@ def calculate_skill_mastery(skills: pd.DataFrame) -> pd.DataFrame:
         df[column] = _numeric(df[column]).clip(0, 100)
 
     df["mastery_calc"] = sum(df[col] * weight for col, weight in MASTERY_WEIGHTS.items())
-    # The calculated value is authoritative; the CSV mastery column is kept for readability/export.
     df["mastery"] = df["mastery_calc"].round(1)
     return df
 
@@ -161,7 +166,7 @@ def skill_priority_table(skills: pd.DataFrame, errors: pd.DataFrame, as_of: date
         domain = str(row.get("domain", ""))
         if domain in DOMAIN_WEIGHTS:
             return DOMAIN_WEIGHTS[domain] / max(DOMAIN_WEIGHTS.values())
-        return 0.75  # cross-domain capabilities matter, but should not crowd out blueprint domains.
+        return 0.75
 
     gap = (100.0 - df["mastery"]).clip(0, 100) / 100.0
     error_boost = (df["open_error_count"].clip(0, 3) / 3.0) * 0.25
@@ -178,12 +183,89 @@ def critical_gaps(skills: pd.DataFrame, errors: pd.DataFrame, limit: int = 8) ->
     priorities = skill_priority_table(skills, errors)
     if priorities.empty:
         return priorities
-    # A critical gap is either weak mastery or an unresolved high-confidence misconception.
     mask = (priorities["mastery"] < 60) | (priorities["high_conf_error_count"] > 0)
     return priorities[mask].head(limit).copy()
 
 
-def evaluate_h0(h0_results: pd.DataFrame) -> H0Status:
+def practitioner_baseline(responses: pd.DataFrame) -> pd.DataFrame:
+    if responses.empty:
+        return pd.DataFrame(columns=["category", "score", "answered", "scored", "total"])
+    df = responses.copy()
+    evaluator = pd.to_numeric(df.get("evaluator_score_0_5"), errors="coerce")
+    self_score = pd.to_numeric(df.get("self_score_0_5"), errors="coerce")
+    df["effective_score"] = evaluator.where(evaluator.notna(), self_score)
+    df["answered"] = df.get("response", "").fillna("").astype(str).str.strip().ne("")
+    rows = []
+    for category, group in df.groupby("category", dropna=False):
+        available = group["effective_score"].dropna()
+        rows.append(
+            {
+                "category": str(category),
+                "score": round(float(available.mean()), 2) if not available.empty else None,
+                "answered": int(group["answered"].sum()),
+                "scored": int(group["effective_score"].notna().sum()),
+                "total": int(len(group)),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _validate_practitioner_responses(responses: pd.DataFrame | None, missing: list[str]) -> None:
+    if responses is None:
+        return
+    if responses.empty:
+        missing.append("practitioner responses")
+        return
+    response_complete = responses.get("response", pd.Series(index=responses.index, dtype=object)).fillna("").astype(str).str.strip().ne("")
+    evaluator = pd.to_numeric(responses.get("evaluator_score_0_5"), errors="coerce")
+    self_score = pd.to_numeric(responses.get("self_score_0_5"), errors="coerce")
+    scored = evaluator.where(evaluator.notna(), self_score).notna()
+    if not response_complete.all():
+        missing.append(f"practitioner responses answered ({int(response_complete.sum())}/{len(responses)})")
+    if not scored.all():
+        missing.append(f"practitioner responses scored ({int(scored.sum())}/{len(responses)})")
+
+
+def _validate_top_gaps(gaps: pd.DataFrame | None, missing: list[str]) -> None:
+    if gaps is None:
+        return
+    if len(gaps) < 5:
+        missing.append("five structured H0 gaps")
+        return
+    required = ["skill_id_or_topic", "gap_description", "evidence", "remediation"]
+    complete = pd.Series(True, index=gaps.index)
+    for col in required:
+        if col not in gaps.columns:
+            complete &= False
+        else:
+            complete &= gaps[col].fillna("").astype(str).str.strip().ne("")
+    if int(complete.sum()) < 5:
+        missing.append(f"five structured H0 gaps ({int(complete.sum())}/5 complete)")
+
+
+def _validate_seven_day_plan(plan: pd.DataFrame | None, missing: list[str]) -> None:
+    if plan is None:
+        return
+    if len(plan) < 7:
+        missing.append("seven-day remediation plan")
+        return
+    required = ["focus_skill_id_or_topic", "objective", "exercise", "evidence_expected"]
+    complete = pd.Series(True, index=plan.index)
+    for col in required:
+        if col not in plan.columns:
+            complete &= False
+        else:
+            complete &= plan[col].fillna("").astype(str).str.strip().ne("")
+    if int(complete.sum()) < 7:
+        missing.append(f"seven-day remediation plan ({int(complete.sum())}/7 days planned)")
+
+
+def evaluate_h0(
+    h0_results: pd.DataFrame,
+    responses: pd.DataFrame | None = None,
+    gaps: pd.DataFrame | None = None,
+    plan: pd.DataFrame | None = None,
+) -> H0Status:
     if h0_results.empty:
         return H0Status(False, ("H0_RESULTS.csv has no result row",), None)
 
@@ -206,39 +288,27 @@ def evaluate_h0(h0_results: pd.DataFrame) -> H0Status:
 
     text_required = ["strongest_transfer", "false_confidence", "weakest_aws_area", "highest_leverage_skill", "mental_model_change"]
     for field in text_required:
-        value = row.get(field)
-        if value is None or (isinstance(value, float) and pd.isna(value)) or not str(value).strip():
+        if not _nonblank(row.get(field)):
             missing.append(field)
+
+    _validate_practitioner_responses(responses, missing)
+    _validate_top_gaps(gaps, missing)
+    _validate_seven_day_plan(plan, missing)
 
     overall = pd.to_numeric(row.get("overall_pct"), errors="coerce")
     overall_value = None if pd.isna(overall) else round(float(overall), 1)
-    return H0Status(not missing, tuple(missing), overall_value)
+    return H0Status(not missing, tuple(dict.fromkeys(missing)), overall_value)
 
 
-def practitioner_baseline(responses: pd.DataFrame) -> pd.DataFrame:
-    if responses.empty:
-        return pd.DataFrame(columns=["category", "score", "answered", "total"])
-    df = responses.copy()
-    score = pd.to_numeric(df.get("evaluator_score_0_5"), errors="coerce")
-    self_score = pd.to_numeric(df.get("self_score_0_5"), errors="coerce")
-    df["effective_score"] = score.where(score.notna(), self_score)
-    df["answered"] = df.get("response", "").fillna("").astype(str).str.strip().ne("")
-    rows = []
-    for category, group in df.groupby("category", dropna=False):
-        available = group["effective_score"].dropna()
-        rows.append(
-            {
-                "category": str(category),
-                "score": round(float(available.mean()), 2) if not available.empty else None,
-                "answered": int(group["answered"].sum()),
-                "total": int(len(group)),
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-def next_best_action(skills: pd.DataFrame, errors: pd.DataFrame, h0_results: pd.DataFrame) -> dict[str, object]:
-    h0 = evaluate_h0(h0_results)
+def next_best_action(
+    skills: pd.DataFrame,
+    errors: pd.DataFrame,
+    h0_results: pd.DataFrame,
+    h0_responses: pd.DataFrame | None = None,
+    h0_gaps: pd.DataFrame | None = None,
+    h0_plan: pd.DataFrame | None = None,
+) -> dict[str, object]:
+    h0 = evaluate_h0(h0_results, h0_responses, h0_gaps, h0_plan)
     if not h0.passed:
         return {
             "type": "H0",
