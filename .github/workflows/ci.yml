@@ -27,5 +27,17 @@ jobs:
       - name: Compile application
         run: python -m compileall app
 
-      - name: Run tests
+      - name: Import decision engine
+        run: python -c "import app.core; print(app.core.__file__)"
+
+      - name: Test readiness metrics
+        run: pytest -q tests/test_core.py -k "mastery or readiness or high_confidence or retention_due"
+
+      - name: Test H0 gates
+        run: pytest -q tests/test_core.py -k "h0"
+
+      - name: Test next best action
+        run: pytest -q tests/test_core.py -k "next_action"
+
+      - name: Full test suite
         run: pytest -q
