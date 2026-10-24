@@ -213,17 +213,20 @@ def practitioner_baseline(responses: pd.DataFrame) -> pd.DataFrame:
 def _validate_practitioner_responses(responses: pd.DataFrame | None, missing: list[str]) -> None:
     if responses is None:
         return
+    expected = 20
     if responses.empty:
-        missing.append("practitioner responses")
+        missing.append(f"practitioner responses (0/{expected})")
         return
     response_complete = responses.get("response", pd.Series(index=responses.index, dtype=object)).fillna("").astype(str).str.strip().ne("")
     evaluator = pd.to_numeric(responses.get("evaluator_score_0_5"), errors="coerce")
     self_score = pd.to_numeric(responses.get("self_score_0_5"), errors="coerce")
     scored = evaluator.where(evaluator.notna(), self_score).notna()
-    if not response_complete.all():
-        missing.append(f"practitioner responses answered ({int(response_complete.sum())}/{len(responses)})")
-    if not scored.all():
-        missing.append(f"practitioner responses scored ({int(scored.sum())}/{len(responses)})")
+    answered_count = int(response_complete.sum())
+    scored_count = int(scored.sum())
+    if len(responses) < expected or answered_count < expected:
+        missing.append(f"practitioner responses answered ({answered_count}/{expected})")
+    if len(responses) < expected or scored_count < expected:
+        missing.append(f"practitioner responses scored ({scored_count}/{expected})")
 
 
 def _validate_top_gaps(gaps: pd.DataFrame | None, missing: list[str]) -> None:
