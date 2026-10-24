@@ -6,9 +6,16 @@
 
 - **Target:** MLA-C02
 - **Current milestone:** H0 — Baseline without protection
+- **H0 system:** READY
+- **H0 personal baseline:** PENDING REAL EVIDENCE
+- **Command Center:** v0.1 implemented
 - **Certification readiness:** NOT YET MEASURED
 - **Practitioner readiness:** BASELINE PENDING
 - **Last updated:** 2026-10-23
+
+## Important distinction
+
+The H0 infrastructure is complete, but H0 itself does **not** pass until the learner performs the closed-book diagnostic and records the evidence. The Command Center is fail-closed by design.
 
 ## Domain readiness
 
@@ -21,12 +28,23 @@
 
 ## Readiness gates
 
+- [ ] H0 diagnostic evidence complete
 - [ ] Two full simulations ≥80%
 - [ ] No domain <70%
 - [ ] Critical gaps = 0
 - [ ] High-confidence wrong answers <3%
 - [ ] 7-day retention ≥80%
 - [ ] Blank-page architecture defense passed
+
+## H0 evidence required
+
+- [ ] Official quantitative baseline recorded
+- [ ] Practitioner cold questions answered and scored
+- [ ] Wrong answers entered into `ERROR_LEDGER.csv`
+- [ ] Blank-page architecture attempted
+- [ ] Five structured gaps completed in `h0/H0_GAPS.csv`
+- [ ] Seven-day remediation plan completed in `h0/H0_7_DAY_PLAN.csv`
+- [ ] Strongest transfer / false confidence / weakest AWS area recorded
 
 ## Current top gaps
 
@@ -46,11 +64,11 @@
 
 ## Strongest evidence
 
-`None yet — first evidence must come from H0.`
+`System evidence only: Mastery OS + Command Center. Personal capability evidence begins with H0.`
 
 ## Next best action
 
-**Complete `DIAGNOSTIC_H0.md` closed-book and populate `ERROR_LEDGER.csv` before beginning broad study.**
+**Run `scripts/run_command_center.bat`, open the H0 Diagnostic tab, and complete the baseline closed-book before broad study.**
 
 ## Weekly review template
 
