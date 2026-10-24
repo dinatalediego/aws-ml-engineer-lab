@@ -8,6 +8,8 @@ A deliberate-practice repository for becoming an AWS Machine Learning Engineer a
 
 Passing the certification is a milestone. The real output is practitioner-level capability.
 
+The long-term destination is defined in `LONG_TERM_VISION.md`: evolve this repository from a certification lab into a credible AWS ML Engineering portfolio, with **Medallio as the flagship real-business laboratory** and a path from statistical framing to deployed models, monitoring, decisions, outcomes and economic value.
+
 ## Operating model
 
 This repository uses a mastery loop:
@@ -58,6 +60,7 @@ The Command Center can edit these locally and recompute the gate.
 
 ## Core files
 
+- `LONG_TERM_VISION.md` — strategic compass from certification to a real AWS ML Engineering portfolio built around Medallio.
 - `MASTER_PLAN.md` — global methodology, cadence and promotion rules.
 - `EXAM_BLUEPRINT.md` — current MLA-C02 domains, weights, traps and study priorities.
 - `CHALLENGE_MILESTONES.md` — observable capability milestones H0–H13.
