@@ -30,23 +30,38 @@ jobs:
       - name: Import decision engine
         run: python -c "import app.core; print(app.core.__file__)"
 
-      - name: Test mastery formula
-        run: pytest -q tests/test_core.py::test_mastery_formula
+      - name: Smoke-check mastery calculation
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          from app.core import calculate_skill_mastery
+          sample = pd.DataFrame([{
+              "recall": 80,
+              "application": 60,
+              "discrimination": 40,
+              "retention": 100,
+          }])
+          result = calculate_skill_mastery(sample)
+          value = float(result.loc[0, "mastery"])
+          print("mastery=", value)
+          assert abs(value - 66.0) < 1e-9, value
+          PY
 
-      - name: Test blueprint weighted readiness
-        run: pytest -q tests/test_core.py::test_readiness_is_blueprint_weighted
+      - name: Run pytest with captured diagnostics
+        id: pytest
+        shell: bash
+        run: |
+          set +e
+          pytest -vv tests/test_core.py > pytest-output.txt 2>&1
+          code=$?
+          cat pytest-output.txt
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit $code
 
-      - name: Test high-confidence priority
-        run: pytest -q tests/test_core.py::test_high_confidence_errors_are_prioritized
-
-      - name: Test retention due
-        run: pytest -q tests/test_core.py::test_retention_due_respects_date_and_state
-
-      - name: Test H0 gates
-        run: pytest -q tests/test_core.py -k "h0"
-
-      - name: Test next best action
-        run: pytest -q tests/test_core.py -k "next_action"
-
-      - name: Full test suite
-        run: pytest -q
+      - name: Upload pytest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-diagnostics-${{ github.run_id }}
+          path: pytest-output.txt
+          if-no-files-found: warn
