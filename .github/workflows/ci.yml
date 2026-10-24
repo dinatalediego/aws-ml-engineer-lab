@@ -30,8 +30,17 @@ jobs:
       - name: Import decision engine
         run: python -c "import app.core; print(app.core.__file__)"
 
-      - name: Test readiness metrics
-        run: pytest -q tests/test_core.py -k "mastery or readiness or high_confidence or retention_due"
+      - name: Test mastery formula
+        run: pytest -q tests/test_core.py::test_mastery_formula
+
+      - name: Test blueprint weighted readiness
+        run: pytest -q tests/test_core.py::test_readiness_is_blueprint_weighted
+
+      - name: Test high-confidence priority
+        run: pytest -q tests/test_core.py::test_high_confidence_errors_are_prioritized
+
+      - name: Test retention due
+        run: pytest -q tests/test_core.py::test_retention_due_respects_date_and_state
 
       - name: Test H0 gates
         run: pytest -q tests/test_core.py -k "h0"
