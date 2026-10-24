@@ -16,6 +16,46 @@ This repository uses a mastery loop:
 
 A topic is never considered complete because a video was watched or a lab ran once.
 
+## Command Center v0.1
+
+The repository includes a local Streamlit control plane that reads the evidence files and calculates:
+
+- Certification Readiness;
+- readiness by exam domain;
+- Critical Gaps;
+- Retention Due;
+- High-Confidence Errors;
+- Next Best Study Action;
+- H0 gate status;
+- practitioner baseline by category.
+
+The dashboard is deliberately fail-closed: **before H0 contains real evidence, it refuses to present a meaningful readiness estimate or optimize the study plan.**
+
+### Windows quick start
+
+```powershell
+.\scripts\run_command_center.bat
+```
+
+The first run creates `.venv`, installs `requirements.txt`, and launches the local application.
+
+See `app/README.md` for formulas and operating details.
+
+## H0 first
+
+Do not begin broad AWS study until the initial baseline is captured.
+
+Use:
+
+- `DIAGNOSTIC_H0.md` — diagnostic design;
+- `h0/H0_RUNBOOK.md` — exact execution sequence;
+- `h0/H0_RESULTS.csv` — official quantitative baseline;
+- `h0/H0_PRACTITIONER_RESPONSES.csv` — closed-book practitioner questions;
+- `h0/H0_GAPS.csv` — five ranked weaknesses;
+- `h0/H0_7_DAY_PLAN.csv` — first remediation sprint.
+
+The Command Center can edit these locally and recompute the gate.
+
 ## Core files
 
 - `MASTER_PLAN.md` — global methodology, cadence and promotion rules.
@@ -25,11 +65,27 @@ A topic is never considered complete because a video was watched or a lab ran on
 - `ERROR_LEDGER.csv` — every meaningful error becomes a learning asset.
 - `DIAGNOSTIC_H0.md` — baseline diagnostic protocol.
 - `FAQ_ELITE_PRACTITIONERS.md` — high-signal practitioner questions and expected reasoning.
+- `PRACTITIONER_GATES.md` — promotion criteria beyond exam recognition.
 - `PROGRESS.md` — current readiness, gaps and next best actions.
+- `app/` — Command Center and decision engine.
+- `tests/` — executable validation of the scoring logic.
 
 ## Mastery states
 
 `UNSEEN → EXPOSED → UNDERSTOOD → RECALLED → APPLIED → DISCRIMINATED → RETAINED → EXAM_READY`
+
+## Mastery model
+
+A skill is scored as:
+
+```text
+Mastery = 20% Recall
+        + 30% Application
+        + 30% Discrimination
+        + 20% Retention
+```
+
+The weighting is deliberate: being able to **apply and choose** matters more than merely recognizing terminology.
 
 ## Non-negotiable gates
 
@@ -66,7 +122,8 @@ Source of truth: AWS exam guide and AWS Certification pages. Third-party materia
 - treating security as a final checklist;
 - closing mistakes without recording their root cause;
 - booking the exam because studying feels tiring;
-- building infrastructure that does not increase exam readiness or engineering skill.
+- building infrastructure that does not increase exam readiness or engineering skill;
+- marking a diagnostic gate complete without evidence.
 
 ## Definition of ready
 
@@ -78,6 +135,20 @@ Certification readiness requires all of the following:
 - high-confidence wrong answers below 3%;
 - 7-day retention at or above 80%;
 - ability to defend representative architectures without notes.
+
+The Command Center readiness percentage is a **training metric**, not a conversion to the official AWS scaled score.
+
+## Engineering quality gate
+
+Every change to the application is validated through GitHub Actions:
+
+```text
+install dependencies
+→ compile app
+→ run pytest
+```
+
+Study evidence can be messy. The system that measures it should not be.
 
 ## Repository philosophy
 
