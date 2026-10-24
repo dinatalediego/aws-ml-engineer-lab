@@ -1,6 +1,7 @@
 from datetime import date
 
 import pandas as pd
+import pytest
 
 from app.core import (
     calculate_skill_mastery,
@@ -119,7 +120,7 @@ def complete_plan() -> pd.DataFrame:
 
 def test_mastery_formula():
     result = calculate_skill_mastery(sample_skills())
-    assert result.loc[0, "mastery"] == 66.0
+    assert float(result.loc[0, "mastery"]) == pytest.approx(66.0, abs=1e-9)
 
 
 def test_readiness_is_blueprint_weighted():
